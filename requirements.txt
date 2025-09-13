@@ -1,0 +1,6 @@
+streamlit
+gTTS
+google-cloud-speech
+puthon-Levenshtein
+pandas
+matplotlib
