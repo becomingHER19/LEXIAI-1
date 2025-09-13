@@ -1,6 +1,6 @@
 streamlit
 gTTS
-google-cloud-speech
+openai-whisper
 puthon-Levenshtein
 pandas
 matplotlib
