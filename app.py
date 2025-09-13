@@ -1,85 +1,46 @@
 import streamlit as st
+import whisper
 from gtts import gTTS
 import os
-import tempfile
 import difflib
-import pandas as pd
-import matplotlib.pyplot as plt
-
-# -----------------------------
-# DATA
-# -----------------------------
-PASSAGES = {    "Easy": "The sun is big and bright.",    "Medium": "The little rabbit hopped quickly through the forest.",    "Hard": "Elephants are fascinating animals because of their size and memory."}
-
-# Track session data
-if "history" not in st.session_state:
-  st.session_state["history"] = []
-  
-# -----------------------------
-# UI SETTINGS
-# -----------------------------
-st.set_page_config(page_title="LexiAI", layout="centered")
-
-# Dyslexia mode toggle
-dyslexia_mode = st.sidebar.checkbox("Activate Dyslexia-Friendly Mode")
-
-if dyslexia_mode:
-  st.markdown(        """        <style>        body {            background-color: #FFF9E6;        }        * {            font-family: 'OpenDyslexic', sans-serif !important;            line-height: 1.6;        }        </style>        """,        unsafe_allow_html=True    )
-st.title("📖 LexiAI – Reading Coach for Kids")
-
-# -----------------------------
-# SELECT PASSAGE
-# -----------------------------
-level = st.radio("Choose a passage difficulty:", list(PASSAGES.keys()))
-text = PASSAGES[level]st.write(f"**Passage:** {text}")
-
-# -----------------------------
-# LISTEN FEATURE
-# -----------------------------
-if st.button("🔊 Listen to Passage"):
-  tts = gTTS(text)
-  with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as fp:
-    tts.save(fp.name)
-    st.audio(fp.name, format="audio/mp3")
+st.set_page_config(page_title="LexiAI", layout="wide")
+st.title("📖 LexiAI – Interactive Reading Coach")
+# Load Whisper model (small for speed)
+@st.cache_resourcedef load_model():
+return whisper.load_model("small")
+model = load_model()
+# Paragraphs
+passages = {    "Easy": "The cat sat on the mat.",    "Medium": "Learning to read can be fun when we practice every day.",    "Hard": "Children with dyslexia face unique challenges, but technology can help them succeed."}
+choice = st.selectbox("📚 Choose a passage difficulty:", list(passages.keys()))target_text = passages[choice]
+st.markdown(f"### Passage to read:")st.write(target_text)
+# Option to listen to passage
+if st.button("🔊 Hear this passage"):
+  tts = gTTS(text=target_text, lang="en")    tts.save("passage.mp3")    st.audio("passage.mp3")
+# Upload child's reading audio
+uploaded_audio = st.file_uploader("🎤 Upload your reading (MP3/WAV)", type=["mp3", "wav", "m4a"])
+if uploaded_audio:
+  with open("child_reading.wav", "wb") as f:
+    f.write(uploaded_audio.getbuffer())
+    st.info("⏳ Transcribing...")    
+    result = model.transcribe("child_reading.wav")
+    child_text = result["text"]
+    st.markdown("### 🗣️ Child's Reading")
+    st.write(child_text)
+    # Compare with target
+    seq = difflib.SequenceMatcher(None, target_text.lower(), child_text.lower())
+    accuracy = round(seq.ratio() * 100, 2)
+    st.markdown(f"### ✅ Accuracy: {accuracy}%")
+    # Show corrections
+st.markdown("### 🔎 Feedback")
+target_words = target_text.split()
+child_words = child_text.split()
+feedback = []
+for t, c in zip(target_words, child_words):
+  if t.lower() != c.lower():
     
-# -----------------------------
-# READ ALOUD FEATURE
-# -----------------------------
-uploaded_audio = st.file_uploader("🎤 Read the passage aloud (upload a WAV/MP3)", type=["wav", "mp3"])
-if uploaded_audio is not None:
-  # Save temp file
-  with tempfile.NamedTemporaryFile(delete=False) as fp:
-    fp.write(uploaded_audio.read())
-    audio_path = fp.name
-    
-    # For now, just mock transcription (no Google Speech to Text due to API key)
-    # In real app: send audio_path to Google STT
-    transcript = "the little rabbit hop quickly through forest"  # Demo fake output
-    st.subheader("Your Reading (transcribed):")
-    st.write(transcript)
-    # Compare with passage
-    diff = difflib.ndiff(text.lower().split(), transcript.lower().split())
-    mistakes = [word for word in diff if word.startswith('- ')]
-    if mistakes:
-      st.error(f"Good try! You missed or misread {len(mistakes)} words:
-      {', '.join([m[2:] for m in mistakes])}")
+    feedback.append(f"Expected **{t}**, but heard **{c}**")
+    if feedback:
+      for fdb in feedback:
+        st.warning(fdb)
     else:
-      st.success("Excellent! You read everything correctly 🎉")
-    # Save to dashboard
-    accuracy = round((1 - len(mistakes)/len(text.split())) * 100, 1)
-    st.session_state["history"].append({"Passage": level, "Accuracy": accuracy})
-    
-# -----------------------------
-# DASHBOARD
-# -----------------------------
-st.subheader("📊 Parent/Teacher Dashboard")
-if st.session_state["history"]:
-  df = pd.DataFrame(st.session_state["history"])
-  st.dataframe(df)
-    fig, ax = plt.subplots()
-df.groupby("Passage")["Accuracy"].mean().plot(kind="bar", ax=ax)
-ax.set_ylabel("Accuracy %")
-st.pyplot(fig)
-else:
-st.info("No reading attempts yet. Try reading a passage!")
-
+      st.success("Great job! No major mistakes 🎉")
